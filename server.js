@@ -5,14 +5,12 @@ const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 ffmpeg.setFfmpegPath(ffmpegPath);
 const app = express();
 
-// Cập nhật danh sách các trạm API trung gian mới và hoạt động tốt nhất
-const INVIDIOUS_INSTANCES = [
-  "https://invidious.asir.dev",
-  "https://iv.melmac.space",
-  "https://invidious.io.lol",
-  "https://invidious.jing.rocks",
-  "https://yewtu.be",
-  "https://vid.puffyan.us"
+// Sử dụng mạng lưới Piped API - Chuyên gia ẩn danh và vượt rào YouTube hiện nay
+const PIPED_INSTANCES = [
+  "https://pipedapi.kavin.rocks",
+  "https://pipedapi.tokhmi.xyz",
+  "https://api.piped.yt",
+  "https://pipedapi.syncpundit.io"
 ];
 
 app.get('/api/frame', async (req, res) => {
@@ -23,45 +21,47 @@ app.get('/api/frame', async (req, res) => {
     return res.status(400).send('Thiếu videoId hoặc time.');
   }
 
-  console.log(`[1] Khởi động V5 - Đang quét luồng video cho ID: ${videoId}...`);
+  console.log(`[1] Đang kết nối mạng lưới Piped API để lấy video: ${videoId}...`);
   let directUrl = null;
 
-  for (const instance of INVIDIOUS_INSTANCES) {
+  for (const instance of PIPED_INSTANCES) {
     try {
-      const apiUrl = `${instance}/api/v1/videos/${videoId}`;
-      // Cài đặt thời gian chờ (timeout) 4 giây mỗi trạm để chuyển trạm khác cho nhanh nếu bị nghẽn
-      const response = await fetch(apiUrl, { signal: AbortSignal.timeout(4000) });
+      const apiUrl = `${instance}/streams/${videoId}`;
+      // Chờ tối đa 5 giây, nếu trạm này chậm sẽ tự bỏ qua tìm trạm khác
+      const response = await fetch(apiUrl, { signal: AbortSignal.timeout(5000) });
       
       if (!response.ok) continue;
       const data = await response.json();
       
-      // HƯỚNG SỬA V5:
-      // Cách 1: Tìm luồng chuẩn có cả hình lẫn tiếng (MP4)
-      if (data.formatStreams && data.formatStreams.length > 0) {
-        const format = data.formatStreams.find(f => f.container === 'mp4');
-        if (format) directUrl = format.url;
-      }
-      
-      // Cách 2: Nếu cách 1 thất bại (đặc biệt với livestream), tìm luồng "Chỉ có hình - Video Only" (MP4)
-      if (!directUrl && data.adaptiveFormats && data.adaptiveFormats.length > 0) {
-        const format = data.adaptiveFormats.find(f => f.container === 'mp4' && f.type && f.type.includes('video'));
-        if (format) directUrl = format.url;
-      }
+      if (data.error) continue; // Bỏ qua nếu trạm báo lỗi
 
-      if (directUrl) {
-        console.log(`[2] Thành công! Đã tìm thấy luồng video từ trạm: ${instance}`);
-        break; 
+      // HƯỚNG XỬ LÝ V6: Tìm luồng MP4 được Proxy ẩn danh
+      if (data.videoStreams && data.videoStreams.length > 0) {
+        // Ưu tiên 1: Lấy bản 720p có cả hình lẫn tiếng
+        let stream = data.videoStreams.find(s => s.quality === '720p' && s.format === 'MPEG_4' && !s.videoOnly);
+        
+        // Ưu tiên 2: Lấy bản 360p hoặc bất kỳ bản MP4 nào có hình lẫn tiếng
+        if (!stream) stream = data.videoStreams.find(s => s.format === 'MPEG_4' && !s.videoOnly);
+        
+        // Ưu tiên 3: Lấy bản MP4 chỉ có hình (phù hợp với Livestream lưu trữ)
+        if (!stream) stream = data.videoStreams.find(s => s.format === 'MPEG_4');
+        
+        if (stream && stream.url) {
+          directUrl = stream.url;
+          console.log(`[2] Tuyệt vời! Đã lấy link proxy ẩn danh từ trạm: ${instance}`);
+          break; 
+        }
       }
     } catch (e) {
-      console.log(`Trạm ${instance} không phản hồi hoặc hết thời gian chờ. Thử trạm kế tiếp...`);
+      console.log(`Trạm ${instance} bị nghẽn. Thử trạm kế tiếp...`);
     }
   }
 
   if (!directUrl) {
-    return res.status(500).send('Mạng lưới API trung gian đang bận xử lý dữ liệu luồng. Vui lòng nhấn F5 thử lại sau vài giây.');
+    return res.status(500).send('Toàn bộ mạng lưới Piped đều đang bận. Vui lòng nhấn F5 thử lại sau vài giây.');
   }
 
-  console.log(`[3] Đang tiến hành cắt ảnh tại mốc thời gian: ${time}...`);
+  console.log(`[3] Đang tải luồng ẩn danh và cắt ảnh tại mốc: ${time}...`);
   res.setHeader('Content-Type', 'image/jpeg');
 
   ffmpeg(directUrl)
@@ -76,5 +76,5 @@ app.get('/api/frame', async (req, res) => {
 });
 
 const listener = app.listen(process.env.PORT || 3000, () => {
-  console.log('Máy chủ V5 (Deep Search Video-Only) đang chạy ở cổng ' + listener.address().port);
+  console.log('Máy chủ V6 (Piped API Proxy) đang chạy ở cổng ' + listener.address().port);
 });
