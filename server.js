@@ -17,29 +17,28 @@ app.get('/api/frame', async (req, res) => {
   const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
   try {
-    console.log(`[1] Đang vượt rào lấy link gốc cho video: ${videoId}...`);
+    console.log(`[1] Đang dùng Cookies để vượt rào lấy link: ${videoId}...`);
     
-    // 1. Dùng yt-dlp giả mạo trình duyệt để lấy direct link của YouTube
+    // Đã thêm dòng cookies: 'cookies.txt' để qua mặt YouTube
     const info = await youtubedl(videoUrl, {
       dumpSingleJson: true,
       noCheckCertificate: true,
       noWarnings: true,
+      cookies: 'cookies.txt', 
       addHeader: [
         'referer:youtube.com', 
         'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
       ]
     });
 
-    // Lọc ra luồng video định dạng MP4 tốt nhất
     const format = info.formats.reverse().find(f => f.ext === 'mp4' && f.vcodec !== 'none');
     if (!format) throw new Error("Không tìm thấy luồng video phù hợp.");
     
     const directUrl = format.url;
-    console.log(`[2] Đã lấy link thành công! Tiến hành cắt ảnh tại ${time}...`);
+    console.log(`[2] Đã vượt rào thành công! Tiến hành cắt ảnh tại ${time}...`);
 
     res.setHeader('Content-Type', 'image/jpeg');
 
-    // 2. FFmpeg cắt ảnh trực tiếp từ luồng
     ffmpeg(directUrl)
       .seekInput(time)
       .frames(1)
@@ -57,5 +56,5 @@ app.get('/api/frame', async (req, res) => {
 });
 
 const listener = app.listen(process.env.PORT || 3000, () => {
-  console.log('Máy chủ V2 (Đã nâng cấp Vượt Rào) đang chạy ở cổng ' + listener.address().port);
+  console.log('Máy chủ V3 (Dùng Thẻ Căn Cước) đang chạy ở cổng ' + listener.address().port);
 });
